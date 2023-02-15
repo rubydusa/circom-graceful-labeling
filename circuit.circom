@@ -39,29 +39,29 @@ template IsZero() {
     in*out === 0;
 }
 
-template GracefulLabeling() {
-    // signal input vertecies[8];
-    signal input edges[16];  // each edge is compromised of two values
-    // signal input edgesLabeling[8];
+// E is the amount of edges
+// V is the amount of vertecies
+template ConnectionMap(E, V) {
+    signal input edges[2 * E];  // each edge is compromised of two values
 
-    signal output connectionMap[8][8];
+    signal output connectionMap[V][V];
 
-    component aIsI[8][8][8];
-    component bIsI[8][8][8];
-    component aIsJ[8][8][8];
-    component bIsJ[8][8][8];
+    component aIsI[V][V][E];
+    component bIsI[V][V][E];
+    component aIsJ[V][V][E];
+    component bIsJ[V][V][E];
 
-    component aIsIbIsJ[8][8][8];
-    component aIsJbIsI[8][8][8];
-    component abIsIJEdge[8][8][8];
+    component aIsIbIsJ[V][V][E];
+    component aIsJbIsI[V][V][E];
+    component abIsIJEdge[V][V][E];
 
-    component isIJEdge[8][8];
+    component isIJEdge[V][V];
 
     // for each i, j connectionMap[i][j] signifies there is an edge between the vertex i and j
-    for (var i = 0; i < 8; i++) {
-        for (var j = 0; j < 8; j++) {
+    for (var i = 0; i < V; i++) {
+        for (var j = i + 1; j < V; j++) {
             var count = 0;
-            for (var k = 0; k < 8; k ++) {
+            for (var k = 0; k < E; k++) {
                 var a = edges[2 * k];
                 var b = edges[2 * k + 1];
 
@@ -101,6 +101,17 @@ template GracefulLabeling() {
             connectionMap[i][j] <== 1 - isIJEdge[i][j].out;
         }
     }
+    // graph is non-directional so relationship is symmetric
+    for (var i = 0; i < V; i++) {
+        for (var j = i + 1; j < V; j++) {
+            connectionMap[j][i] <== connectionMap[i][j];
+        }
+    }
+
+    // vertecies can't have edges with themselves
+    for (var i = 0; i < V; i++) {
+        connectionMap[i][i] <== 0;
+    }
 }
 
-component main = GracefulLabeling();
+component main = ConnectionMap(8, 8);
