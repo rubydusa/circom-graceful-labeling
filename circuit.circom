@@ -114,4 +114,17 @@ template ConnectionMap(E, V) {
     }
 }
 
+// E is the amount of edges
+// V is the amount of vertecies
+template GracefulLabeling(E, V) {
+    signal input verteciesLabeling[V];
+    signal input edgesLabeling[E];
+
+    signal input edges[2 * E];
+
+    // array such that i-th element is the 
+    signal input parents[V];
+    
+}
+
 component main = ConnectionMap(8, 8);
