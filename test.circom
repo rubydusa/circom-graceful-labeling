@@ -1,4 +1,4 @@
-pragma circom 2.0.0;
+pragma circom 2.1.4;
 
 include "./node_modules/circomlib/circuits/comparators.circom";
 
@@ -36,15 +36,10 @@ template AtIndex(N) {
 
     signal output out;
 
-    component isIIndex[N];
     component result = CalculateTotal(N);
     for (var i = 0; i < N; i++) {
-        isIIndex[i] = IsEqual();
-        isIIndex[i].in[0] <== i;
-        isIIndex[i].in[1] <== index;
-
-        // accm = accm + isIIndex[i].out * array[i];
-        result.in[i] <== isIIndex[i].out * array[i];
+        var isEqual = IsEqual()([i, index]);
+        result.in[i] <== isEqual * array[i];
     }
 
     out <== result.out;
@@ -59,31 +54,21 @@ template UniqueSet(N) {
     // if unique set accm should remain 0
     var accm = 0;
 
-    component boundCheck[N];
     for (var i = 0; i < N; i++) {
-        boundCheck[i] = LessThan(bits(N - 1));
-        boundCheck[i].in[0] <== in[i];
-        boundCheck[i].in[1] <== N;
-
         // in[i] < N is desirable
-        accm += 1 - boundCheck[i].out;
+        var inBound = LessThan(bits(N - 1))([in[i], N]);
+        accm += 1 - inBound;
     }
 
-    component isEquals[N][N];
     for (var i = 0; i < N; i++) {
         for (var j = i + 1; j < N; j++) {
-            isEquals[i][j] = IsEqual();
-            isEquals[i][j].in[0] <== in[i];
-            isEquals[i][j].in[1] <== in[j];
-
             // in[i] != in[j] is desirable
-            accm += isEquals[i][j].out;
+            var isEqual = IsEqual()([in[i], in[j]]);
+            accm += isEqual;
         }
     }
 
-    component isUniqueSet = IsZero();
-    isUniqueSet.in <== accm;
-    out <== isUniqueSet.out;
+    out <== IsZero()(accm);
 }
 
 // parents is an array such that the i-th element is the parent of node i
@@ -96,19 +81,13 @@ template ValidTree(V) {
     // if valid tree accm should remain 0
     var accm = 0;
 
-    component boundsCheck[V - 1];
     for (var i = 0; i < V - 1; i++) {
-        boundsCheck[i] = LessThan(bits(V - 1));
-        boundsCheck[i].in[0] <== parents[i];
-        boundsCheck[i].in[1] <== i;
-
         // parents[i] < i is desirable
-        accm += 1 - boundsCheck[i].out;
+        var inBound = LessThan(bits(V - 1))([parents[i], i]);
+        accm += 1 - inBound;
     }
 
-    component isValidTree = IsZero();
-    isValidTree.in <== accm;
-    out <== isValidTree.out;
+    out <== IsZero()(accm);
 }
 
 // parents and labeling validation is required ==> proof generation will fail
@@ -122,51 +101,28 @@ template GracefulLabeling(V) {
     signal output out;
 
     // validate parents (each parent must be lower than self)
-    component isParentsValid = ValidTree(V);
-    for (var i = 0; i < V - 1; i++) {
-        isParentsValid.parents[i] <== parents[i];
-    }
-    isParentsValid.out === 1;
+    var isParentsValid = ValidTree(V)(parents);
+    isParentsValid === 1;
 
     // validate labeling input (set of integers 0 - V - 1)
-    component isLabelingUnique = UniqueSet(V);
-    for (var i = 0; i < V; i++) {
-        isLabelingUnique.in[i] <== labeling[i];
-    }
-    isLabelingUnique.out === 1;
-
-    // in a tree with V vertexes there are V - 1 edges
-    signal edges[V - 1];
+    var isLabelingUnique = UniqueSet(V)(labeling);
+    isLabelingUnique === 1;
 
     // compute edges labeling
-    component edgesA[V - 1];
-    component edgesB[V - 1];
-    component isALessThanB[V - 1];
-
     signal ifAIsLess[V - 1];
     signal ifBIsLess[V - 1];
+    signal edges[V - 1];
 
     for (var i = 0; i < V - 1; i++) {
-        // the current vertex value
-        edgesA[i] = AtIndex(V);
-        edgesA[i].index <== i;
-        for (var j = 0; j < V; j++) {
-            edgesA[i].array[j] <== labeling[j];
-        }
+        // compute edge vertex values
+        var edgeA = AtIndex(V)(index <== i, array <== labeling);
+        var edgeB = AtIndex(V)(index <== parents[i], array <== labeling);
 
-        // the parent's vertex value
-        edgesB[i] = AtIndex(V);
-        edgesB[i].index <== parents[i]; 
-        for (var j = 0; j < V; j++) {
-            edgesB[i].array[j] <== labeling[j];
-        }
+        // compute absolute difference
+        var isALessThanB = LessThan(bits(V - 1))([edgeA, edgeB]);
+        ifAIsLess[i] <== isALessThanB * (edgeB - edgeA);
+        ifBIsLess[i] <== (1 - isALessThanB) * (edgeA - edgeB);
 
-        isALessThanB[i] = LessThan(bits(V - 1));
-        isALessThanB[i].in[0] <== edgesA[i].out;
-        isALessThanB[i].in[1] <== edgesB[i].out;
-
-        ifAIsLess[i] <== isALessThanB[i].out * (edgesB[i].out - edgesA[i].out);
-        ifBIsLess[i] <== (1 - isALessThanB[i].out) * (edgesA[i].out - edgesB[i].out);
         edges[i] <== ifAIsLess[i] + ifBIsLess[i];
     }
 
@@ -182,4 +138,3 @@ template GracefulLabeling(V) {
 }
 
 component main {public [parents]} = GracefulLabeling(8);
-// component main = AtIndex(16);
