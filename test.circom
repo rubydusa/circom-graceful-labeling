@@ -2,39 +2,72 @@ pragma circom 2.0.0;
 
 include "./node_modules/circomlib/circuits/comparators.circom";
 
-template Min() {
-    signal input in[2];
-    signal output out;
-
-    component compare = LessThan(16);
-    compare.in[0] <== in[0];
-    compare.in[1] <== in[1];
-
-    out <== compare.out * in[0] + (1 - compare.out) * in[1];
+// amount of bits needed to represent n
+function bits(n) {
+    var result = 1;
+    while (n <= 1) {
+        n \= 2;
+        result++;
+    }
+    return result;
 }
 
+// sum in[N]
+// thanks snark-jwt-verify :))
+template CalculateTotal(N) {
+    signal input in[N];
+    signal output out;
+
+    signal outs[N];
+    outs[0] <== in[0];
+
+    for (var i=1; i < N; i++) {
+        outs[i] <== outs[i - 1] + in[i];
+    }
+
+    out <== outs[N - 1];
+}
+
+// array[index] when index is a signal
+// O(n) because of how circuits work
 template AtIndex(N) {
     signal input array[N];
     signal input index;
 
-    var accm = 0;
     signal output out;
 
     component isIIndex[N];
+    component result = CalculateTotal(N);
     for (var i = 0; i < N; i++) {
         isIIndex[i] = IsEqual();
         isIIndex[i].in[0] <== i;
         isIIndex[i].in[1] <== index;
 
-        accm += isIIndex[i].out * array[i];
+        // accm = accm + isIIndex[i].out * array[i];
+        result.in[i] <== isIIndex[i].out * array[i];
     }
 
-    out <== accm;
+    out <== result.out;
 }
 
-// input is an array compromised of unique values
+// out is 1 if in[N] is an array compromised of unique values between 0 and N - 1 (inclusive)
+// otherwise, 0
 template UniqueSet(N) {
     signal input in[N];
+    signal output out;
+
+    // if unique set accm should remain 0
+    var accm = 0;
+
+    component boundCheck[N];
+    for (var i = 0; i < N; i++) {
+        boundCheck[i] = LessThan(bits(N - 1));
+        boundCheck[i].in[0] <== in[i];
+        boundCheck[i].in[1] <== N;
+
+        // in[i] < N is desirable
+        accm += 1 - boundCheck[i].out;
+    }
 
     component isEquals[N][N];
     for (var i = 0; i < N; i++) {
@@ -43,94 +76,110 @@ template UniqueSet(N) {
             isEquals[i][j].in[0] <== in[i];
             isEquals[i][j].in[1] <== in[j];
 
-            isEquals[i][j].out === 0;
+            // in[i] != in[j] is desirable
+            accm += isEquals[i][j].out;
         }
     }
+
+    component isUniqueSet = IsZero();
+    isUniqueSet.in <== accm;
+    out <== isUniqueSet.out;
 }
 
-// remove cyclic parents
-// i = 0 doesn't have a parent (root), value symbolized with V, the number of edges
-//
-// if there are cyclic parents, both have their parent reassigned to root
-// that is because that is the only node you can assign as a parent without potentially creating more cycles
-template FixParents(V) {
-    // original parents (potentially with cycles)
-    signal input in[V];
-    // fixed parents (no cycles)
-    signal output out[V];
+// parents is an array such that the i-th element is the parent of node i
+// in order to ensure non cyclicity, each vertex must have a parent whose index is lower than itself's
+// vertex 0 has no parent hence only V - 1 parents
+template ValidTree(V) {
+    signal input parents[V - 1];
+    signal output out;
 
-    component parentOfMyParent[V];
-    component isCyclicParent[V];
+    // if valid tree accm should remain 0
+    var accm = 0;
 
-    // root
-    out[0] <== V;
+    component boundsCheck[V - 1];
+    for (var i = 0; i < V - 1; i++) {
+        boundsCheck[i] = LessThan(bits(V - 1));
+        boundsCheck[i].in[0] <== parents[i];
+        boundsCheck[i].in[1] <== i;
 
-    for (var i = 1; i < V; i++) {
-        parentOfMyParnet[i] = AtIndex(V);
-        isCyclicParent[i] = IsEqual();
-
-        parentOfMyParent[i].index <== in[i];
-        for (var j = 0; j < V; j++) {
-            parentOfMyParent[i].array[j] <== in[j];
-        }
-
-        isCyclicParent[i].in[0] <== in[i];
-        isCyclicParent[i].in[1] <== parentOfMyParent[i].out;
-
-        out[i] <== (1 - isCyclicParent[i].out) * in[i]; 
+        // parents[i] < i is desirable
+        accm += 1 - boundsCheck[i].out;
     }
+
+    component isValidTree = IsZero();
+    isValidTree.in <== accm;
+    out <== isValidTree.out;
 }
 
-// i = 0 is the root node
+// parents and labeling validation is required ==> proof generation will fail
+// out is 1 if 'labeling' is a graceful labeling of tree 'parents'
+// otherwise, 0
+
 template GracefulLabeling(V) {
-    signal input verteciesLabeling[V];  // private
-    signal input parents[V];  // public
+    signal input labeling[V];  // private
+    signal input parents[V - 1];  // public
 
-    // proof generation fails if not graceful labeling
-    signal output out <== 1;
-    // always ignore parents[0], just for the convinience of index arithmetic
-    // asserting ensures a random value wasn't placed by mistake
-    assert(parents[0] === -1);
-    
-    // ensure labelings are unique and in bound (0 - V - 1, inclusive)
-    component verteciesLabelingBounds[V];
-    for (var i = 0; i < V; i++) {
-        verteciesLabelingBounds[i] = LessThan(16);
-        verteciesLabelingBounds[i].in[0] <== verteciesLabeling[i];
-        verteciesLabelingBounds[i].in[1] <== V;
+    signal output out;
+
+    // validate parents (each parent must be lower than self)
+    component isParentsValid = ValidTree(V);
+    for (var i = 0; i < V - 1; i++) {
+        isParentsValid.parents[i] <== parents[i];
     }
+    isParentsValid.out === 1;
 
-    component isUnique = UniqueSet(V);
-
-    // fix parents
-    component fixedParents = FixParents(V);
+    // validate labeling input (set of integers 0 - V - 1)
+    component isLabelingUnique = UniqueSet(V);
     for (var i = 0; i < V; i++) {
-        fixedParents.in[i] <== parents[i];
+        isLabelingUnique.in[i] <== labeling[i];
     }
+    isLabelingUnique.out === 1;
 
+    // in a tree with V vertexes there are V - 1 edges
+    signal edges[V - 1];
+
+    // compute edges labeling
     component edgesA[V - 1];
     component edgesB[V - 1];
-    component edgesValue[V - 1];
+    component isALessThanB[V - 1];
+
+    signal ifAIsLess[V - 1];
+    signal ifBIsLess[V - 1];
 
     for (var i = 0; i < V - 1; i++) {
         // the current vertex value
         edgesA[i] = AtIndex(V);
         edgesA[i].index <== i;
-        for (var j = 0; j < V - 1; j++) {
-            edgesA.array[j] <== verteciesLabeling[j];
+        for (var j = 0; j < V; j++) {
+            edgesA[i].array[j] <== labeling[j];
         }
 
         // the parent's vertex value
         edgesB[i] = AtIndex(V);
-        edgesB[i].index <== fixedParents.out[i + 1];
-        for (var j = 0; j < V - 1; j++) {
-            edgesB.array[j] <== verteciesLabeling[j];
+        edgesB[i].index <== parents[i]; 
+        for (var j = 0; j < V; j++) {
+            edgesB[i].array[j] <== labeling[j];
         }
 
-        // for relatively small numbers, taking the minimum out of a - b and b - a is the absolute value
-        edgesValue[i] = Min();
-        edgesValue[i].in[0] <== edgesA[i].out - edgesB[i].out;
-        edgesValue[i].in[1] <== edgesB[i].out - edgesA[i].out;
+        isALessThanB[i] = LessThan(bits(V - 1));
+        isALessThanB[i].in[0] <== edgesA[i].out;
+        isALessThanB[i].in[1] <== edgesB[i].out;
+
+        ifAIsLess[i] <== isALessThanB[i].out * (edgesB[i].out - edgesA[i].out);
+        ifBIsLess[i] <== (1 - isALessThanB[i].out) * (edgesA[i].out - edgesB[i].out);
+        edges[i] <== ifAIsLess[i] + ifBIsLess[i];
     }
+
+    // verify edges labeling
+    component isEdgesUnique = UniqueSet(V);
+    // there isn't a 0 edge because two vertecies can never share the same value
+    isEdgesUnique.in[V - 1] <== 0;
+    for (var i = 0; i < V - 1; i++) {
+        isEdgesUnique.in[i] <== edges[i];
+    }
+
+    out <== isEdgesUnique.out;
 }
 
+component main {public [parents]} = GracefulLabeling(8);
+// component main = AtIndex(16);
