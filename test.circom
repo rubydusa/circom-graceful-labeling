@@ -76,6 +76,7 @@ template UniqueSet(N) {
 // in order to ensure non cyclicity, each vertex must have a parent whose index is lower than itself's
 // vertex 0 has no parent hence only V - 1 parents
 template ValidTree(V) {
+    // parents[0] represents the parent of vertex index 1
     signal input parents[V - 1];
     signal output out;
 
@@ -83,8 +84,8 @@ template ValidTree(V) {
     var accm = 0;
 
     for (var i = 0; i < V - 1; i++) {
-        // parents[i] < i is desirable
-        var inBound = LessThan(bits(V - 1))([parents[i], i + 1]);
+        // parents[i] < i + 1 is desirable
+        var inBound = LessThan(bits(V))([parents[i], i + 1]);
         accm += 1 - inBound;
     }
 
@@ -94,9 +95,9 @@ template ValidTree(V) {
 // parents and labeling validation is required ==> proof generation will fail
 // out is 1 if 'labeling' is a graceful labeling of tree 'parents'
 // otherwise, 0
-
 template GracefulLabeling(V) {
     signal input labeling[V];  // private
+    // parents[0] represents the parent of vertex index 1
     signal input parents[V - 1];  // public
 
     signal output out;
@@ -138,10 +139,11 @@ template GracefulLabeling(V) {
     out <== isEdgesUnique.out;
 }
 
-// reduce the amount of public signals
+// TODO: Generalize compression using an additional template and function
 template Main(V) {
     // how many bits needed to represent one vertex or one edge
-    var bitsOfV = bits(V);
+    // since edges go from 0 to (V - 1), need only bits of V - 1
+    var bitsOfV = bits(V - 1);
 
     // compute how many bits does the vertex labeling information require
     var labelingBits = bitsOfV * V;
