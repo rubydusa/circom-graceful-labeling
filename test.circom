@@ -1,6 +1,7 @@
 pragma circom 2.1.4;
 
 include "./node_modules/circomlib/circuits/comparators.circom";
+include "./node_modules/circomlib/circuits/bitify.circom";
 
 // amount of bits needed to represent n
 function bits(n) {
@@ -14,6 +15,7 @@ function bits(n) {
 
 // sum in[N]
 // thanks snark-jwt-verify :))
+// TODO: compare against other possible implementation of total
 template CalculateTotal(N) {
     signal input in[N];
     signal output out;
@@ -137,4 +139,83 @@ template GracefulLabeling(V) {
     out <== isEdgesUnique.out;
 }
 
-component main {public [parents]} = GracefulLabeling(8);
+// reduce the amount of public signals
+template Main(V) {
+    // how many bits needed to represent one vertex or one edge
+    var bitsOfV = bits(V);
+
+    // compute how many bits does the vertex labeling information require
+    var labelingBits = bitsOfV * V;
+    var labelingSignalsNeeded = (labelingBits \ 254) + 1;
+    
+    // compute how many bits does the parents information require
+    var parentsBits = bitsOfV * (V - 1);
+    var parentsSignalsNeeded = (parentsBits \ 254) + 1;
+
+    signal input labeling[labelingSignalsNeeded];
+    signal input parents[parentsSignalsNeeded];
+
+    // 1 if true
+    signal output out;
+
+    component labelingAsBits[labelingSignalsNeeded];
+    component parentsAsBits[parentsSignalsNeeded];
+
+    for (var i = 0; i < labelingSignalsNeeded; i++) {
+        var curBits = i == labelingSignalsNeeded - 1 ? labelingBits % 254 : 254;
+
+        labelingAsBits[i] = Num2Bits(curBits);
+        labelingAsBits[i].in <== labeling[i];
+    }
+
+    for (var i = 0; i < parentsSignalsNeeded; i++) {
+        var curBits = i == parentsSignalsNeeded - 1 ? parentsBits % 254 : 254;
+
+        parentsAsBits[i] = Num2Bits(curBits);
+        parentsAsBits[i].in <== parents[i];
+    }
+
+    var labelingVars[V];
+    var parentsVars[V - 1];
+
+    // initialize variable arrays
+    labelingVars[V - 1] = 0;
+    for (var i = 0; i < V - 1; i++) {
+        labelingVars[i] = 0;
+        parentsVars[i] = 0;
+    }
+
+    // iterate over every bit, determine in which Num2Bits component it is located at which index,
+    // determine to which vertex labeling it corresponds and add it to the appropriate vertex label
+    for (var i = 0; i < labelingBits; i++) {
+        var labelingIndex = i \ bitsOfV;
+        var labelingAsBitsIndex = i \ 254;
+
+        var currentPower = 2 ** (i % bitsOfV);
+
+        labelingVars[labelingIndex] += currentPower * labelingAsBits[labelingAsBitsIndex].out[i % 254];
+    }
+
+    // iterate over every bit, determine in which Num2Bits component it is located at which index,
+    // determine to which parent index it corresponds and add it to the appropriate parent value
+    for (var i = 0; i < parentsBits; i++) {
+        var parentsIndex = i \ bitsOfV;
+        var parentsAsBitsIndex = i \ 254;
+
+        var currentPower = 2 ** (i % bitsOfV);
+
+        parentsVars[parentsIndex] += currentPower * parentsAsBits[parentsAsBitsIndex].out[i % 254];
+    }
+
+    component gracefulLabeling = GracefulLabeling(V);
+
+    gracefulLabeling.labeling[V - 1] <== labelingVars[V - 1];
+    for (var i = 0; i < V - 1; i++) {
+        gracefulLabeling.labeling[i] <== labelingVars[i];
+        gracefulLabeling.parents[i] <== parentsVars[i];
+    }
+
+    out <== gracefulLabeling.out;
+}
+
+component main {public [parents]} = Main(8);
