@@ -1,12 +1,11 @@
 pragma circom 2.1.4;
-
 include "./node_modules/circomlib/circuits/comparators.circom";
 include "./node_modules/circomlib/circuits/bitify.circom";
 
 // amount of bits needed to represent n
 function bits(n) {
     var result = 1;
-    while (n <= 1) {
+    while (n > 1) {
         n \= 2;
         result++;
     }
@@ -58,7 +57,7 @@ template UniqueSet(N) {
 
     for (var i = 0; i < N; i++) {
         // in[i] < N is desirable
-        var inBound = LessThan(bits(N - 1))([in[i], N]);
+        var inBound = LessThan(bits(N))([in[i], N]);
         accm += 1 - inBound;
     }
 
@@ -85,7 +84,7 @@ template ValidTree(V) {
 
     for (var i = 0; i < V - 1; i++) {
         // parents[i] < i is desirable
-        var inBound = LessThan(bits(V - 1))([parents[i], i]);
+        var inBound = LessThan(bits(V - 1))([parents[i], i + 1]);
         accm += 1 - inBound;
     }
 
@@ -115,17 +114,17 @@ template GracefulLabeling(V) {
     signal ifBIsLess[V - 1];
     signal edges[V - 1];
 
-    for (var i = 0; i < V - 1; i++) {
+    for (var i = 1; i < V; i++) {
         // compute edge vertex values
         var edgeA = AtIndex(V)(index <== i, array <== labeling);
-        var edgeB = AtIndex(V)(index <== parents[i], array <== labeling);
+        var edgeB = AtIndex(V)(index <== parents[i - 1], array <== labeling);
 
         // compute absolute difference
         var isALessThanB = LessThan(bits(V - 1))([edgeA, edgeB]);
-        ifAIsLess[i] <== isALessThanB * (edgeB - edgeA);
-        ifBIsLess[i] <== (1 - isALessThanB) * (edgeA - edgeB);
+        ifAIsLess[i - 1] <== isALessThanB * (edgeB - edgeA);
+        ifBIsLess[i - 1] <== (1 - isALessThanB) * (edgeA - edgeB);
 
-        edges[i] <== ifAIsLess[i] + ifBIsLess[i];
+        edges[i - 1] <== ifAIsLess[i - 1] + ifBIsLess[i - 1];
     }
 
     // verify edges labeling
@@ -209,13 +208,14 @@ template Main(V) {
 
     component gracefulLabeling = GracefulLabeling(V);
 
-    gracefulLabeling.labeling[V - 1] <== labelingVars[V - 1];
+    gracefulLabeling.labeling[V - 1] <== labelingVars[V - 1]; 
     for (var i = 0; i < V - 1; i++) {
         gracefulLabeling.labeling[i] <== labelingVars[i];
         gracefulLabeling.parents[i] <== parentsVars[i];
     }
 
     out <== gracefulLabeling.out;
+    log("result: ", out);
 }
 
 component main {public [parents]} = Main(8);
