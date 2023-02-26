@@ -12,6 +12,20 @@ function bits(n) {
     return result;
 }
 
+// 1. return how many bits are needed
+// 2. return how many signals are needed
+function bit_usage(MAX_VALUE, AMOUNT) {
+    var b = bits(MAX_VALUE);
+
+    return b * AMOUNT;
+}
+
+function bit_usage_signals(MAX_VALUE, AMOUNT) {
+    var b = bits(MAX_VALUE);
+
+    return ((b * AMOUNT) \ 254) + 1;
+}
+
 // sum in[N]
 // thanks snark-jwt-verify :))
 // TODO: compare against other possible implementation of total
@@ -139,19 +153,50 @@ template GracefulLabeling(V) {
     out <== isEdgesUnique.out;
 }
 
+// returns an array of AMOUNT values in range 0 to MAX_VALUE (inclusive)
+// from compressed input
+template FromCompressed(MAX_VALUE, AMOUNT) {
+    var bitsOfV = bits(MAX_VALUE);
+    var bitsNeeded = bit_usage(MAX_VALUE, AMOUNT);
+    var signalsNeeded = bit_usage_signals(MAX_VALUE, AMOUNT);
+
+    signal input in[signalsNeeded];
+    signal output out[AMOUNT];
+
+    component asBits[signalsNeeded];
+
+    for (var i = 0; i < signalsNeeded; i++) {
+        var curBits = i == signalsNeeded - 1 ? bitsNeeded % 254 : 254;
+
+        asBits[i] = Num2Bits(curBits);
+        asBits[i].in <== in[i];
+    }
+
+    var values[AMOUNT];
+    for (var i = 0; i < AMOUNT; i++) {
+        values[i] = 0;
+    }
+
+    for (var i = 0; i < bitsNeeded; i++) {
+        var valuesIndex = i \ bitsOfV;
+        var asBitsIndex = i \ 254;
+
+        var currentPower = 2 ** (i % bitsOfV);
+
+        values[valuesIndex] += currentPower * asBits[asBitsIndex].out[i % 254];
+    }
+
+    for (var i = 0; i < AMOUNT; i++) {
+        out[i] <== values[i];
+    }
+}
+
 // TODO: Generalize compression using an additional template and function
 template Main(V) {
-    // how many bits needed to represent one vertex or one edge
-    // since edges go from 0 to (V - 1), need only bits of V - 1
-    var bitsOfV = bits(V - 1);
-
-    // compute how many bits does the vertex labeling information require
-    var labelingBits = bitsOfV * V;
-    var labelingSignalsNeeded = (labelingBits \ 254) + 1;
-    
-    // compute how many bits does the parents information require
-    var parentsBits = bitsOfV * (V - 1);
-    var parentsSignalsNeeded = (parentsBits \ 254) + 1;
+    // bit usage of V labels such that the max value is V - 1
+    var labelingSignalsNeeded = bit_usage_signals(V - 1, V);
+    // bit usage of V - 1 parents array such that the max value is V - 1
+    var parentsSignalsNeeded = bit_usage_signals(V - 1, V - 1);
 
     signal input labeling[labelingSignalsNeeded];
     signal input parents[parentsSignalsNeeded];
@@ -162,61 +207,12 @@ template Main(V) {
     component labelingAsBits[labelingSignalsNeeded];
     component parentsAsBits[parentsSignalsNeeded];
 
-    for (var i = 0; i < labelingSignalsNeeded; i++) {
-        var curBits = i == labelingSignalsNeeded - 1 ? labelingBits % 254 : 254;
+    var labelingUncompressed[V] = FromCompressed(V - 1, V)(labeling);
+    var parentsUncompressed[V - 1] = FromCompressed(V - 1, V - 1)(parents);
 
-        labelingAsBits[i] = Num2Bits(curBits);
-        labelingAsBits[i].in <== labeling[i];
-    }
+    var isGracefulLabeling = GracefulLabeling(V)(labeling <== labelingUncompressed, parents <== parentsUncompressed);
 
-    for (var i = 0; i < parentsSignalsNeeded; i++) {
-        var curBits = i == parentsSignalsNeeded - 1 ? parentsBits % 254 : 254;
-
-        parentsAsBits[i] = Num2Bits(curBits);
-        parentsAsBits[i].in <== parents[i];
-    }
-
-    var labelingVars[V];
-    var parentsVars[V - 1];
-
-    // initialize variable arrays
-    labelingVars[V - 1] = 0;
-    for (var i = 0; i < V - 1; i++) {
-        labelingVars[i] = 0;
-        parentsVars[i] = 0;
-    }
-
-    // iterate over every bit, determine in which Num2Bits component it is located at which index,
-    // determine to which vertex labeling it corresponds and add it to the appropriate vertex label
-    for (var i = 0; i < labelingBits; i++) {
-        var labelingIndex = i \ bitsOfV;
-        var labelingAsBitsIndex = i \ 254;
-
-        var currentPower = 2 ** (i % bitsOfV);
-
-        labelingVars[labelingIndex] += currentPower * labelingAsBits[labelingAsBitsIndex].out[i % 254];
-    }
-
-    // iterate over every bit, determine in which Num2Bits component it is located at which index,
-    // determine to which parent index it corresponds and add it to the appropriate parent value
-    for (var i = 0; i < parentsBits; i++) {
-        var parentsIndex = i \ bitsOfV;
-        var parentsAsBitsIndex = i \ 254;
-
-        var currentPower = 2 ** (i % bitsOfV);
-
-        parentsVars[parentsIndex] += currentPower * parentsAsBits[parentsAsBitsIndex].out[i % 254];
-    }
-
-    component gracefulLabeling = GracefulLabeling(V);
-
-    gracefulLabeling.labeling[V - 1] <== labelingVars[V - 1]; 
-    for (var i = 0; i < V - 1; i++) {
-        gracefulLabeling.labeling[i] <== labelingVars[i];
-        gracefulLabeling.parents[i] <== parentsVars[i];
-    }
-
-    out <== gracefulLabeling.out;
+    out <== isGracefulLabeling;
     log("result: ", out);
 }
 
