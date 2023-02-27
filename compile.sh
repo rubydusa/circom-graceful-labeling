@@ -1,9 +1,9 @@
-#!/bin/bash
+#!/bin/bash -e
 
 SAVE_TO="artifacts/"
 INPUT="input.json"
 WITNESS="witness"
-FILE="test"
+FILE="circuit"
 
 circom --r1cs --wasm -o $SAVE_TO "${FILE}.circom"
 
