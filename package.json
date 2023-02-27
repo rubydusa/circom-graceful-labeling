@@ -1,7 +1,6 @@
 {
   "name": "gracefullabeling",
   "version": "1.0.0",
-  "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -17,6 +16,10 @@
   },
   "homepage": "https://github.com/rubydusa/vkoch-market#readme",
   "dependencies": {
-    "circomlib": "^2.0.5"
-  }
+    "chai": "^4.3.7",
+    "circom_tester": "^0.0.19",
+    "circomlib": "^2.0.5",
+    "mocha": "^10.2.0"
+  },
+  "description": ""
 }
