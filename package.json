@@ -21,5 +21,10 @@
     "circomlib": "^2.0.5",
     "mocha": "^10.2.0"
   },
-  "description": ""
+  "description": "",
+  "devDependencies": {
+    "@types/chai": "^4.3.4",
+    "@types/node": "^18.15.11",
+    "ts-node": "^10.9.1"
+  }
 }

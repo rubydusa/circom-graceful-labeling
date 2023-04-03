@@ -1,6 +1,6 @@
 pragma circom 2.1.4;
-include "./node_modules/circomlib/circuits/comparators.circom";
-include "./node_modules/circomlib/circuits/bitify.circom";
+include "../node_modules/circomlib/circuits/comparators.circom";
+include "../node_modules/circomlib/circuits/bitify.circom";
 
 // amount of bits needed to represent n
 function bits(n) {
@@ -191,7 +191,6 @@ template FromCompressed(MAX_VALUE, AMOUNT) {
     }
 }
 
-// TODO: Generalize compression using an additional template and function
 template Main(V) {
     // bit usage of V labels such that the max value is V - 1
     var labelingSignalsNeeded = bit_usage_signals(V - 1, V);
