@@ -1,41 +1,55 @@
-import fs, { PathLike } from 'fs';
-import path from 'path';
+// @ts-ignore
+import { wasm as wasmTester } from 'circom_tester';
 
-export enum Protocol {
-    Plonk,
-    Groth16
-}
+import chai, { expect } from 'chai';
+import chaiAsPromised from 'chai-as-promised';
+chai.use(chaiAsPromised);
 
-export interface Circuit {
+import { PathLike } from 'fs';
+
+import 'mocha';
+
+interface CircuitTest {
+    path: PathLike,
     name: string,
-    main: string,
-    path: PathLike, 
-    parameters: number[],
-    publicSignals: string[],
-    protocol: Protocol,
-    version: string
+    cases: CircuitTestCase[]
 }
 
-export function generateTestCircuit(circuit: Circuit): string {
-    const { main, path, parameters, publicSignals, version } = circuit;
-
-    const pragmaString = `pragma circom ${version};`;
-    const includeString = `include "${path}";`;
-    const publicSignalsString = publicSignals.length > 0 ? `{public [${publicSignals.join()}]} ` : '';
-    const mainComponenetString = `component main ${publicSignalsString}= ${main}(${parameters.join()});`;
-
-    return [
-        pragmaString,
-        includeString,
-        mainComponenetString
-    ].join('\n');
+interface CircuitTestCase {
+    input: object,
+    output: object | null,
+    reasonOfFail?: string,
+    description?: string
 }
 
-export function generateTestCircuits(circuits: Circuit[], outputDir: PathLike) {
-    fs.mkdirSync(outputDir, { recursive: true });
+export function generateCircuitTest(circuitTest: CircuitTest): void {
+    describe(circuitTest.name, () => {
+        let circuit: any;
+        before(async () => {
+            circuit = await wasmTester(circuitTest.path);
+        });
 
-    for (const circuit of circuits) {
-        const testCircuit = generateTestCircuit(circuit);
-        fs.writeFileSync(path.join(outputDir.toString(), `${circuit.name}.t.circom`), testCircuit);
-    }
+        for (const [i, caseData] of circuitTest.cases.entries()) {
+            const { input, output, reasonOfFail, description } = caseData;
+            const caseName = description !== undefined ? `Case#${i}: ${description}` : `Case#${i}`; 
+
+            if (reasonOfFail !== undefined) {
+                it(caseName, async () => {
+                    await expect((async () => {
+                        const witness = await circuit.calculateWitness(input);
+                        await circuit.checkConstraints(witness);
+                    })()).to.be.rejectedWith(reasonOfFail);
+                });
+            } else {
+                it(caseName, async () => {
+                    const witness = await circuit.calculateWitness(input);
+                    await circuit.checkConstraints(witness);
+
+                    if (output !== null) {
+                        await circuit.assertOut(witness, output);
+                    }
+                });
+            }
+        }
+    });
 }

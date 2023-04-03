@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npm run generate_tests && mocha -r ts-node/register --recursive test",
+    "generate_tests": "ts-node ./circuits/test_config.ts"
   },
   "repository": {
     "type": "git",
@@ -16,15 +17,18 @@
   },
   "homepage": "https://github.com/rubydusa/vkoch-market#readme",
   "dependencies": {
-    "chai": "^4.3.7",
-    "circom_tester": "^0.0.19",
-    "circomlib": "^2.0.5",
-    "mocha": "^10.2.0"
+    "circomlib": "^2.0.5"
   },
   "description": "",
   "devDependencies": {
     "@types/chai": "^4.3.4",
+    "@types/chai-as-promised": "^7.1.5",
+    "@types/mocha": "^10.0.1",
     "@types/node": "^18.15.11",
+    "chai": "^4.3.7",
+    "chai-as-promised": "^7.1.1",
+    "circom_tester": "^0.0.19",
+    "mocha": "^10.2.0",
     "ts-node": "^10.9.1"
   }
 }

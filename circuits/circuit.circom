@@ -215,4 +215,3 @@ template Main(V) {
     log("result: ", out);
 }
 
-component main {public [parents]} = Main(8);
